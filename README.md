@@ -2,7 +2,7 @@
 
 An interactive, step-by-step simulator that shows what happens inside a language model when it predicts the next word. Type the start of a sentence, press run, and watch a miniature transformer work through tokens, embeddings, self-attention, the feed-forward network, word scores and sampling, with every matrix and every calculation visible.
 
-**[▶ Try it live](https://YOUR-USERNAME.github.io/YOUR-REPO/)**
+**[▶ Try it live](https://boulbeba115.github.io/Self-Attention-Simulator/)**
 
 > Replace the link above with your GitHub Pages address once the site is published.
 
