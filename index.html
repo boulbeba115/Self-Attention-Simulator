@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LLM Simulator — see how AI picks its next word</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div class="wait" id="wait">
+    <div>
+      <div class="spin"></div>Preparing the model…
+    </div>
+  </div>
+  <div class="pop" id="pop" role="tooltip"></div>
+
+  <!-- ===================== LANDING ===================== -->
+  <section class="screen on" id="setup">
+    <nav class="nav">
+      <div class="nav-in">
+        <div class="brand"><img src="assets/logo.png" alt="" class="logo">LLM Simulator</div>
+        <div class="nav-links"><a href="#how">How it works</a><a href="#settings">Settings</a><button class="linkbtn"
+            data-lesson="mm">Math refresher</button></div>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <div class="eyebrow grad">LLM Simulator</div>
+      <h1><span>See how AI picks</span><span class="grad">its next word.</span></h1>
+      <p class="sub">Type the start of a sentence. A miniature language model predicts what comes next and shows you
+        every step of its thinking.</p>
+      <div class="ask glow">
+        <div class="ask-in">
+          <input id="inp" value="the dog sat on the" autocomplete="off" spellcheck="false"
+            aria-label="Start of a sentence">
+          <button class="go" id="start" aria-label="Run the model"><svg class="icon" viewBox="0 0 24 24">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg></button>
+        </div>
+      </div>
+      <div class="chips" id="examples"></div>
+    </header>
+
+    <section class="section">
+      <div class="live reveal">
+        <div>
+          <div class="hgrid-wrap" id="heroMat"></div>
+        </div>
+        <div>
+          <h3>Attention, live.</h3>
+          <p>Each row is one of your words. The brighter the square, the more that word pays attention to an earlier
+            one. Later words stay hidden. Keep typing and watch it change.</p>
+          <div class="next-lbl">Most likely next word</div>
+          <div class="next-big grad" id="heroNext">mat</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how">
+      <h2 class="reveal">Twelve steps. One word.</h2>
+      <p class="lede reveal">Every time the model writes a word, it runs through the same twelve steps. You can watch
+        each one.</p>
+      <div class="gallery-wrap reveal">
+        <div class="gallery" id="gallery"></div>
+        <div class="garrows"><button class="round" id="gPrev" aria-label="Scroll back"><svg class="icon"
+              viewBox="0 0 24 24">
+              <path d="M15 6l-6 6 6 6" />
+            </svg></button><button class="round" id="gNext" aria-label="Scroll forward"><svg class="icon"
+              viewBox="0 0 24 24">
+              <path d="M9 6l6 6-6 6" />
+            </svg></button></div>
+      </div>
+    </section>
+
+    <section class="section" id="settings">
+      <h2 class="reveal">Make it yours.</h2>
+      <p class="lede reveal">Change how the model thinks and how it chooses. Tap <span class="info"
+          style="display:inline-block;text-align:center;cursor:default">i</span> to learn what each setting does.</p>
+      <div class="groups reveal" id="groups"></div>
+    </section>
+    <footer>Runs entirely in your browser. Use ← and → to move between steps and space to play.</footer>
+  </section>
+
+  <!-- ===================== SIMULATION ===================== -->
+  <section class="screen" id="sim">
+    <header class="simbar">
+      <div class="simbar-in">
+        <div class="sb1">
+          <button class="back" id="exit"><svg class="icon" viewBox="0 0 24 24">
+              <path d="M15 6l-6 6 6 6" />
+            </svg>New sentence</button>
+          <span class="counter" id="counter"></span>
+          <button class="back r" data-lesson="mm">Math refresher</button>
+        </div>
+        <div class="sentence" id="sentence"></div>
+        <div class="prog" id="prog"></div>
+        <div class="plabel" id="plabel"></div>
+      </div>
+    </header>
+    <main class="stage" id="stage"></main>
+    <div class="dock">
+      <button class="dbtn" id="prev" aria-label="Previous step" title="Previous step (←)"><svg class="icon"
+          viewBox="0 0 24 24">
+          <path d="M15 6l-6 6 6 6" />
+        </svg></button>
+      <button class="dbtn" id="play" aria-label="Play" title="Play (space)"></button>
+      <button class="dbtn primary" id="next" aria-label="Next step" title="Next step (→)"><svg class="icon"
+          viewBox="0 0 24 24">
+          <path d="M9 6l6 6-6 6" />
+        </svg></button>
+      <span class="dsep"></span>
+      <button class="dtext" id="skip">Skip</button>
+      <button class="dtext" id="nextTok">Next word</button>
+    </div>
+    <div class="sheet" id="drawer" role="dialog" aria-label="How this number was made">
+      <div class="grabber"></div>
+      <h4>How this number was made <button class="xbtn" id="closeDrawer" aria-label="Close">✕</button></h4>
+      <div id="drawerBody"></div>
+    </div>
+  </section>
+
+  <div class="modal-bg" id="lessonBg">
+    <div class="modal" role="dialog" aria-label="Math refresher">
+      <h3>Math refresher <button class="xbtn" id="closeLesson" aria-label="Close">✕</button></h3>
+      <div class="segc" id="lessonTabs"><button data-l="dot">Dot product</button><button data-l="mm">Matrix
+          multiplication</button><button data-l="sm">Softmax</button></div>
+      <div class="lcap" id="lcap"></div>
+      <div class="lviz" id="lviz"></div>
+      <div class="lnav"><button class="pillbtn gray" id="lBack">Back</button>
+        <div class="ldots" id="ldots"></div><button class="pillbtn" id="lNext">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
