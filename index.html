@@ -7,7 +7,7 @@
   <title>LLM Simulator — see how AI picks its next word</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -19,71 +19,116 @@
   </div>
   <div class="pop" id="pop" role="tooltip"></div>
 
+  <nav class="nav">
+    <div class="nav-in">
+      <a class="brand" href="#top" id="brand"><img src="assets/logo.png" alt="" class="logo">LLM Simulator</a>
+      <div class="nav-links"><button class="linkbtn" data-open="settings">Settings</button><button class="linkbtn" data-lesson="mm">Math refresher</button></div>
+    </div>
+  </nav>
+
   <!-- ===================== LANDING ===================== -->
   <section class="screen on" id="setup">
-    <nav class="nav">
-      <div class="nav-in">
-        <div class="brand"><img src="assets/logo.png" alt="" class="logo">LLM Simulator</div>
-        <div class="nav-links"><a href="#how">How it works</a><a href="#settings">Settings</a><button class="linkbtn"
-            data-lesson="mm">Math refresher</button></div>
-      </div>
-    </nav>
 
-    <header class="hero">
-      <div class="eyebrow grad">LLM Simulator</div>
-      <h1><span>See how AI picks</span><span class="grad">its next word.</span></h1>
-      <p class="sub">Type the start of a sentence. A miniature language model predicts what comes next and shows you
-        every step of its thinking.</p>
-      <div class="ask glow">
-        <div class="ask-in">
+    <div class="top" id="top">
+      <header class="hero">
+        <span class="sticker">Runs in your browser · nothing to install</span>
+        <h1>Watch a machine guess the <span class="blk">next word</span></h1>
+        <p class="sub">That is all a language model ever does: guess one word, add it, guess again. Type the start of
+          a sentence, then open this small one up and see every step behind the guess.</p>
+        <div class="ask">
           <input id="inp" value="the dog sat on the" autocomplete="off" spellcheck="false"
             aria-label="Start of a sentence">
-          <button class="go" id="start" aria-label="Run the model"><svg class="icon" viewBox="0 0 24 24">
+          <button class="go" id="start">Run<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 12h14M13 6l6 6-6 6" />
             </svg></button>
         </div>
-      </div>
-      <div class="chips" id="examples"></div>
-    </header>
+        <p class="tryline">Or try <span id="examples"></span></p>
+        <button class="setline" data-open="settings"><span id="setLine"></span><b>Change settings</b></button>
+      </header>
 
-    <section class="section">
-      <div class="live reveal">
-        <div>
-          <div class="hgrid-wrap" id="heroMat"></div>
+      <div class="board">
+        <div class="board-head"><span><i class="dot"></i>Live</span><span>changes as you type</span></div>
+        <div class="tiles" id="heroMat">
+          <p class="muted">Preparing the model…</p>
         </div>
-        <div>
-          <h3>Attention, live.</h3>
-          <p>Each row is one of your words. The brighter the square, the more that word pays attention to an earlier
-            one. Later words stay hidden. Keep typing and watch it change.</p>
-          <div class="next-lbl">Most likely next word</div>
-          <div class="next-big grad" id="heroNext">mat</div>
+        <p class="listen" id="heroListen"></p>
+        <div class="odds">
+          <div class="odds-lbl">Odds for the next word</div>
+          <div class="cands" id="heroTop"></div>
         </div>
       </div>
+    </div>
+
+    <section class="pipe">
+      <h2>Press Run, and your sentence goes through twelve steps</h2>
+      <ol id="steps12"></ol>
     </section>
 
-    <section class="section" id="how">
-      <h2 class="reveal">Twelve steps. One word.</h2>
-      <p class="lede reveal">Every time the model writes a word, it runs through the same twelve steps. You can watch
-        each one.</p>
-      <div class="gallery-wrap reveal">
-        <div class="gallery" id="gallery"></div>
-        <div class="garrows"><button class="round" id="gPrev" aria-label="Scroll back"><svg class="icon"
-              viewBox="0 0 24 24">
-              <path d="M15 6l-6 6 6 6" />
-            </svg></button><button class="round" id="gNext" aria-label="Scroll forward"><svg class="icon"
-              viewBox="0 0 24 24">
-              <path d="M9 6l6 6-6 6" />
-            </svg></button></div>
+    <section class="section" id="try">
+      <h2>Things to try</h2>
+      <p class="lede">The model has read <b id="nSents">thousands of</b> short sentences and knows <b
+          id="nWords">a few thousand</b> words. This is the sort of thing it picked up. In grey: what it answers.</p>
+      <div class="trygrid" id="tryList"></div>
+    </section>
+
+    <section class="section" id="what">
+      <h2>What you are looking at</h2>
+      <p class="lede">A teaching model, not a product. Here is exactly how far it goes.</p>
+      <div class="notes">
+        <div style="--c:var(--cobalt)">
+          <b class="n">01</b>
+          <h3>The maths is real.</h3>
+          <p>Embeddings, attention, masking, softmax, layer normalisation and sampling all work the way they do in
+            GPT-style models. They are just small enough here that every number fits on screen, and you can click
+            any of them to see how it was worked out.</p>
+        </div>
+        <div style="--c:var(--tomato)">
+          <b class="n">02</b>
+          <h3>The knowledge is counted, not trained.</h3>
+          <p>A real model learns by adjusting billions of weights. This one has random weights, so its knowledge
+            comes from counting which word followed which phrase in its reading. Turn “Training-text strength” down
+            to zero in the settings and you will see the network on its own: it babbles.</p>
+        </div>
+        <div style="--c:var(--mint)">
+          <b class="n">03</b>
+          <h3>So it is not ChatGPT.</h3>
+          <p>It repeats what it has read and falls apart outside it. Ask it for the capital of France and it knows;
+            ask it why, and it does not. That is the point: it is small enough to watch, one step at a time.</p>
+        </div>
       </div>
     </section>
 
-    <section class="section" id="settings">
-      <h2 class="reveal">Make it yours.</h2>
-      <p class="lede reveal">Change how the model thinks and how it chooses. Tap <span class="info"
-          style="display:inline-block;text-align:center;cursor:default">i</span> to learn what each setting does.</p>
-      <div class="groups reveal" id="groups"></div>
-    </section>
-    <footer>Runs entirely in your browser. Use ← and → to move between steps and space to play.</footer>
+    <footer class="foot" id="about">
+      <div class="foot-in">
+        <div class="foot-about">
+          <div class="brand"><img src="assets/logo.png" alt="" class="logo">LLM Simulator</div>
+          <p>A miniature language model that shows every step of its thinking. It runs entirely in your browser.</p>
+        </div>
+        <div class="foot-col">
+          <h6>Explore</h6>
+          <a href="#top">Try a sentence</a>
+          <a href="#try">Things to try</a>
+          <button class="linkbtn" data-open="settings">Settings</button>
+          <button class="linkbtn" data-lesson="dot">Math refresher</button>
+        </div>
+        <div class="foot-col">
+          <h6>Project</h6>
+          <a href="https://github.com/boulbeba115/Self-Attention-Simulator" target="_blank" rel="noopener">Source on GitHub</a>
+          <a href="https://github.com/boulbeba115/Self-Attention-Simulator#how-realistic-is-it" target="_blank" rel="noopener">How realistic is it?</a>
+          <a href="https://huggingface.co/datasets/roneneldan/TinyStories" target="_blank" rel="noopener">TinyStories dataset</a>
+        </div>
+        <div class="foot-col">
+          <h6>Keyboard</h6>
+          <span><kbd>Enter</kbd> run the model</span>
+          <span><kbd>←</kbd> <kbd>→</kbd> previous and next step</span>
+          <span><kbd>Space</kbd> play or pause</span>
+        </div>
+      </div>
+      <div class="foot-base">
+        <span>© 2026 Boulbeba Bouaziz</span>
+        <span>Story sentences from TinyStories, licensed CDLA-Sharing 1.0</span>
+      </div>
+    </footer>
   </section>
 
   <!-- ===================== SIMULATION ===================== -->
@@ -95,7 +140,7 @@
               <path d="M15 6l-6 6 6 6" />
             </svg>New sentence</button>
           <span class="counter" id="counter"></span>
-          <button class="back r" data-lesson="mm">Math refresher</button>
+          <span></span>
         </div>
         <div class="sentence" id="sentence"></div>
         <div class="prog" id="prog"></div>
@@ -124,6 +169,31 @@
     </div>
   </section>
 
+  <div class="modal-bg" id="setBg">
+    <div class="modal wide" role="dialog" aria-label="Settings">
+      <h3>Settings <button class="xbtn" id="closeSet" aria-label="Close">✕</button></h3>
+      <p class="set-lede">Change how the model thinks and how it chooses. Tap <span class="info"
+          style="display:inline-block;text-align:center;cursor:default">i</span> to learn what each setting does.</p>
+      <div class="preview" id="preview" aria-live="polite">
+        <div>
+          <div class="pv-lbl">Preview</div>
+          <div class="pv-out" id="pvOut"></div>
+          <div class="pv-note" id="pvNote"></div>
+        </div>
+        <div>
+          <div class="pv-lbl">Odds for the next word</div>
+          <div class="cands" id="pvTop"></div>
+        </div>
+      </div>
+      <div class="groups" id="groups"></div>
+      <div class="set-foot">
+        <button class="pillbtn gray" id="resetSet">Reset to defaults</button>
+        <span class="set-note" id="setNote"></span>
+        <button class="pillbtn" id="doneSet">Done</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-bg" id="lessonBg">
     <div class="modal" role="dialog" aria-label="Math refresher">
       <h3>Math refresher <button class="xbtn" id="closeLesson" aria-label="Close">✕</button></h3>
@@ -137,6 +207,8 @@
     </div>
   </div>
 
+  <script src="corpus-stories.js"></script>
+  <script src="corpus.js"></script>
   <script src="script.js"></script>
 </body>
 

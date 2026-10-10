@@ -1,163 +1,4 @@
-    /* =====================================================================
-       TRAINING TEXT — the model's whole world
-       ===================================================================== */
-    const CORPUS_TEXT = `hello how are you
-hello how are you today
-hello how are you doing
-hello how is it going
-hello my friend
-hello world
-hello everyone
-hello there
-hi how are you
-hi there my friend
-good morning everyone
-good morning how are you
-good evening my friend
-good night and sweet dreams
-how are you today
-how are you doing today
-i am fine thank you
-i am doing well thank you
-i am happy to see you
-thank you very much
-thank you for your help
-nice to meet you
-see you tomorrow
-see you later my friend
-have a nice day
-have a good day
-what is your name
-my name is sam
-where are you from
-i am from tunisia
-i live in sfax
-the cat sat on the mat
-the dog sat on the rug
-the cat sat on the sofa
-the dog sat on the floor
-the cat sat on the mat and slept
-the cat chased the mouse
-the dog chased the ball
-the dog chased the cat
-the cat is sleeping on the sofa
-the dog is sleeping on the floor
-the dog is playing in the park
-the cat drinks milk
-the dog eats meat
-the bird sings in the tree
-the bird flies in the sky
-the fish swims in the water
-the horse runs in the field
-the cow eats grass
-my cat is very cute
-my dog is very friendly
-i have a cat and a dog
-i drink coffee every morning
-i drink tea in the evening
-she drinks coffee in the morning
-he reads a book at night
-we eat dinner at night
-we eat lunch at noon
-i eat breakfast every morning
-i go to work every day
-i go to school by bus
-i go to the market on sunday
-she goes to the gym every day
-he plays football with his friends
-they play football in the park
-the children are playing in the park
-the children go to school every morning
-i love my family
-i love my mother
-i love my cat
-i love my dog
-i love to read books
-i love to play football
-i like to learn new things
-i like to watch movies
-i like to listen to music
-i want to learn english
-i want to travel around the world
-i want to drink some water
-i need to sleep
-i need some help
-can you help me please
-please help me with my homework
-it is time to sleep
-it is time to eat
-the weather is nice today
-the weather is cold today
-the weather is hot in summer
-it is raining today
-it is sunny today
-the sun rises in the morning
-the sun sets in the evening
-the moon shines at night
-the stars shine at night
-the sky is blue
-the grass is green
-the sea is blue and calm
-the car is red
-the house is big
-the city is very big
-the room is clean
-the food is delicious
-the coffee is hot
-the water is cold
-the book is on the table
-the keys are on the table
-the phone is on the desk
-the teacher explains the lesson
-the students listen to the teacher
-the students write in their notebooks
-the doctor works in the hospital
-the chef cooks in the kitchen
-the farmer works in the field
-my father works in a factory
-my mother cooks dinner every evening
-my brother plays video games
-my sister reads a lot of books
-we are going to the beach
-we are going to the cinema tonight
-let us go to the beach
-let us go home
-the model reads the sentence
-the model predicts the next word
-the model predicts the next token
-attention helps the model focus on important words
-each word looks at the other words
-self attention compares every word with every other word
-transformers use self attention
-language models learn patterns from text
-artificial intelligence is changing the world
-machine learning is a part of artificial intelligence
-neural networks learn from data
-the computer runs the program
-the program has a bug
-i write code every day
-i love to write code
-python is a programming language
-the server is running
-the internet connects the world
-what time is it
-where is the station
-how much does it cost
-what are you doing
-who are you
-bonjour comment ça va
-bonjour comment allez vous
-bonjour tout le monde
-ça va bien merci
-je vais bien merci
-merci beaucoup
-bonne nuit
-bonne journée
-le chat dort sur le canapé
-le chien joue dans le jardin
-je bois du café le matin
-je mange une pomme
-il fait beau aujourd'hui`;
+    /* The training text (CORPUS_TEXT) lives in corpus.js, which is loaded before this file. */
 
     /* =====================================================================
        MATHS HELPERS
@@ -186,90 +27,139 @@ il fait beau aujourd'hui`;
     /* =====================================================================
        "TRAINING": phrase counts + learned word vectors
        ===================================================================== */
-    const SENTS = CORPUS_TEXT.trim().split('\n').map(s => tokenize(s).concat(['.']));
-    const KN = (() => {
-      const ng = new Map(), uni = new Map(); let N = 0;
-      for (const t of SENTS) for (let i = 0; i < t.length; i++) {
-        uni.set(t[i], (uni.get(t[i]) || 0) + 1); N++;
-        for (let n = 1; n <= 3 && i - n >= 0; n++) {
-          const c = t.slice(i - n, i).join(' ');
-          if (!ng.has(c)) ng.set(c, new Map());
-          const m = ng.get(c); m.set(t[i], (m.get(t[i]) || 0) + 1);
-        }
-      }
-      return {ng, uni, N};
+    const NMAX = 4, BACKOFF = 0.2;   // longest phrase that is looked up, and how much say the shorter phrases keep
+    /* The whole training text as one long list of word numbers, with a full stop (number 0) between sentences,
+       plus an index of where every word occurs. Any phrase can then be looked up without storing every phrase. */
+    const TRAIN = (() => {
+      const sents = CORPUS_TEXT.trim().split('\n').map(tokenize).filter(t => t.length);
+      const seen = new Set(); let N = 0;
+      for (const t of sents) {for (const w of t) seen.add(w); N += t.length + 1;}
+      const vocab = ['.'].concat([...seen].sort()), id = Object.create(null); vocab.forEach((w, i) => id[w] = i);
+      const stream = new Int32Array(N + 1); let p = 1;
+      for (const t of sents) {for (const w of t) stream[p++] = id[w]; stream[p++] = 0;}
+      const V = vocab.length, uni = new Int32Array(V), start = new Int32Array(V + 1);
+      for (let i = 1; i < stream.length; i++) uni[stream[i]]++;
+      for (let i = 0; i < stream.length; i++) start[stream[i] + 1]++;
+      for (let i = 0; i < V; i++) start[i + 1] += start[i];
+      const where = new Int32Array(stream.length), fill = start.slice(0, V);
+      for (let i = 0; i < stream.length; i++) where[fill[stream[i]]++] = i;
+      return {vocab, id, stream, uni, N, start, where, sentences: sents.length};
     })();
-    const CORPUS_VOCAB = [...KN.uni.keys()];
+    const CORPUS_VOCAB = TRAIN.vocab, CORPUS_ID = TRAIN.id;
+    const ctxLabel = c => c === '.' ? '[start]' : c.replace(/^\. /, '[start] ');
 
+    /* How likely is each word after this context? The longest phrase seen in training counts most,
+       and every shorter phrase still adds a little (interpolated back-off).
+       Returns P, one probability per word of `vocab` (the training words first, then any new words). */
     function ngram(ctxToks, vocab) {
-      const score = new Map(), tries = []; let mult = 1, match = null;
-      for (let n = Math.min(3, ctxToks.length); n >= 1; n--) {
-        const c = ctxToks.slice(-n).join(' '), m = KN.ng.get(c);
-        tries.push({c, ok: !!m});
-        if (m) {
-          const tot = [...m.values()].reduce((a, b) => a + b, 0);
-          if (!match) match = {c, n, tot, items: [...m.entries()].sort((a, b) => b[1] - a[1])};
-          for (const [w, k] of m) if (!score.has(w)) score.set(w, mult * k / tot);
-        }
-        mult *= 0.4;
+      const {stream, start, where, uni, N, id} = TRAIN, V = vocab.length, len = stream.length;
+      const words = ['.'].concat(ctxToks), seq = words.map(t => t in id ? id[t] : -1), den = N + 0.5 * V;
+      let P = new Float64Array(V); for (let i = 0; i < V; i++) P[i] = ((i < uni.length ? uni[i] : 0) + 0.5) / den;
+      const tally = (ps, off) => {const m = new Map(); for (const p of ps) {const w = stream[p + off]; m.set(w, (m.get(w) || 0) + 1);} return m;};
+      const mix = (m, tot) => {const Q = P.map(x => BACKOFF * x); for (const [w, k] of m) Q[w] += (1 - BACKOFF) * k / tot; P = Q;};
+      const items = m => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([w, k]) => [vocab[w], k]);
+      const occ = (w, room, ok) => {const ps = []; if (w >= 0) for (let k = start[w]; k < start[w + 1]; k++) {const p = where[k]; if (p + room < len && ok(p)) ps.push(p);} return ps;};
+      const tries = [], top = Math.min(NMAX, seq.length), L = seq.length; let match = null;
+      let ps = occ(seq[L - 1], 1, () => true);
+      for (let n = 1; n <= top; n++) {
+        if (n > 1) {const want = seq[L - n]; ps = want < 0 ? [] : ps.filter(p => p - n + 1 >= 0 && stream[p - n + 1] === want);}
+        const c = ctxLabel(words.slice(-n).join(' '));
+        tries.unshift({c, ok: ps.length > 0});
+        if (!ps.length) {for (let m = n + 1; m <= top; m++) tries.unshift({c: ctxLabel(words.slice(-m).join(' ')), ok: false}); break;}
+        const m = tally(ps, 1); mix(m, ps.length); match = {c, n, tot: ps.length, items: items(m)};
+        if (seq[L - n] === 0) break;   // never read back past the start of the sentence
       }
-      for (const w of vocab) if (!score.has(w)) score.set(w, mult * ((KN.uni.get(w) || 0) + 0.5) / (KN.N + 0.5 * vocab.length));
-      let s = 0; for (const w of vocab) s += score.get(w);
-      const P = {}; for (const w of vocab) P[w] = score.get(w) / s;
+      if (!match && L >= 2) {   // unknown last word: skip over it and use the words before
+        const a = seq[L - 2], found = [];
+        let qs = occ(a, 2, p => stream[p + 1] !== 0);
+        for (let n = 1; n <= 2 && L > n; n++) {
+          if (n === 2) {const b = seq[L - 3]; qs = a === 0 || b < 0 ? [] : qs.filter(p => p >= 1 && stream[p - 1] === b);}
+          const c = ctxLabel(words.slice(-1 - n, -1).join(' ')) + ' ___';
+          found.unshift({c, ok: qs.length > 0});
+          if (!qs.length) break;
+          const m = tally(qs, 2); mix(m, qs.length); match = {c, n: 0, tot: qs.length, items: items(m), skip: true};
+        }
+        tries.push(...found);
+      }
       return {P, match, tries};
     }
 
+    /* Word vectors. Count which words come shortly before and after each word, keep the pairs that
+       happen more often than chance, then squeeze that big table down to d numbers per word.
+       E[w] describes the word itself; U[w] describes what tends to come right before w. */
     const EMB_CACHE = {};
-    function learnEmb(d, seed) {
-      const key = d + '|' + seed; if (EMB_CACHE[key]) return EMB_CACHE[key];
-      const W = CORPUS_VOCAB, V = W.length, id = {}; W.forEach((w, i) => id[w] = i);
-      const C = new Float64Array(V * V), rs = new Float64Array(V); let tot = 0;
-      for (const t of SENTS) for (let i = 0; i < t.length; i++) for (let k = 1; k <= 3 && i + k < t.length; k++) {
-        const a = id[t[i]], b = id[t[i + k]], w = 1 / k;
-        C[a * V + b] += w; C[b * V + a] += w; rs[a] += w; rs[b] += w; tot += 2 * w;
+    let PPMI = null;
+    function cooccur() {
+      if (PPMI) return PPMI;
+      const {stream} = TRAIN, V = CORPUS_VOCAB.length, V2 = 2 * V, len = stream.length;
+      const cnt = new Map(), rs = new Float64Array(V), cs = new Float64Array(V2); let tot = 0;
+      const bump = (r, c, w) => {const k = r * V2 + c; cnt.set(k, (cnt.get(k) || 0) + w); rs[r] += w; cs[c] += w; tot += w;};
+      for (let i = 1; i < len; i++) {
+        const a = stream[i]; if (a === 0) continue;
+        for (let k = 1; k <= 3 && i + k < len; k++) {
+          const b = stream[i + k], w = 1 / k;
+          bump(a, b, w); bump(b, V + a, w);   // column b: "b comes soon after"; column V + a: "a comes soon before"
+          if (b === 0) break;                 // stay inside the sentence
+        }
       }
-      const M = new Float64Array(V * V);
-      for (let a = 0; a < V; a++) for (let b = 0; b < V; b++) {const c = C[a * V + b]; if (c > 0) {const v = Math.log(c * tot / (rs[a] * rs[b])); if (v > 0) M[a * V + b] = v;} }
-      const mv = q => {const y = new Float64Array(V); for (let a = 0; a < V; a++) {let s = 0; const o = a * V; for (let b = 0; b < V; b++) s += M[o + b] * q[b]; y[a] = s;} return y;};
-      const r = mulberry32((seed * 977 + d * 31 + 3) >>> 0);
+      const nz0 = cnt.size, ri = new Int32Array(nz0), ci = new Int32Array(nz0), xv = new Float64Array(nz0), rn = new Float64Array(V); let nz = 0;
+      for (const [k, c] of cnt) {const r = Math.floor(k / V2), col = k % V2, v = Math.log(c * tot / (rs[r] * cs[col])); if (v > 0) {ri[nz] = r; ci[nz] = col; xv[nz] = v; rn[r] += v * v; nz++;} }
+      for (let e = 0; e < nz; e++) xv[e] /= Math.sqrt(rn[ri[e]]);   // every word gets the same say, however common it is
+      return PPMI = {ri, ci, xv, nz};
+    }
+    function learnEmb(d) {
+      if (EMB_CACHE[d]) return EMB_CACHE[d];
+      const W = CORPUS_VOCAB, V = W.length, V2 = 2 * V, {ri, ci, xv, nz} = cooccur();
+      const mtv = q => {const y = new Float64Array(V2); for (let e = 0; e < nz; e++) y[ci[e]] += xv[e] * q[ri[e]]; return y;};
+      const mv = y => {const z = new Float64Array(V); for (let e = 0; e < nz; e++) z[ri[e]] += xv[e] * y[ci[e]]; return z;};
+      const r = mulberry32((d * 31 + 3) >>> 0);
       let Qs = Array.from({length: d}, () => Float64Array.from({length: V}, () => gauss(r)));
-      for (let it = 0; it < 30; it++) {
-        const Y = Qs.map(mv);
+      for (let it = 0; it < 14; it++) {
+        const Y = Qs.map(q => mv(mtv(q)));
         for (let k = 0; k < d; k++) {
           for (let p = 0; p < k; p++) {let dp = 0; for (let a = 0; a < V; a++) dp += Y[k][a] * Y[p][a]; for (let a = 0; a < V; a++) Y[k][a] -= dp * Y[p][a];}
           let nr = 0; for (let a = 0; a < V; a++) nr += Y[k][a] ** 2; nr = Math.sqrt(nr) || 1; for (let a = 0; a < V; a++) Y[k][a] /= nr;
         }
         Qs = Y;
       }
-      const lam = Qs.map(q => {const y = mv(q); let s = 0; for (let a = 0; a < V; a++) s += q[a] * y[a]; return s;});
-      const E = {}, raw = W.map((w, a) => Qs.map((q, k) => q[a] * Math.sqrt(Math.abs(lam[k]))));
-      const mean = Array.from({length: d}, (_, k) => raw.reduce((s, v) => s + v[k], 0) / V);
-      W.forEach((w, a) => {const v = raw[a].map((x, k) => x - mean[k]); const nr = Math.hypot(...v) || 1; E[w] = v.map(x => x / nr * Math.sqrt(d));});
-      EMB_CACHE[key] = E; return E;
+      const Vs = [], sig = [];
+      Qs.forEach((q, k) => {
+        const y = mtv(q); let s = 0; for (let c = 0; c < V2; c++) s += y[c] ** 2; s = Math.sqrt(s) || 1;
+        let sum = 0; for (let a = 0; a < V; a++) sum += q[a]; const sign = sum < 0 ? -1 : 1;
+        for (let a = 0; a < V; a++) q[a] *= sign; for (let c = 0; c < V2; c++) y[c] *= sign / s;
+        Vs[k] = y; sig[k] = s;
+      });
+      const E = Object.create(null), U = Object.create(null), sd = Math.sqrt(d);
+      const mean = Qs.map((q, k) => {let s = 0; for (let a = 0; a < V; a++) s += q[a]; return s / V * Math.sqrt(sig[k]);});
+      const vr = new Float64Array(d);
+      W.forEach((w, a) => {
+        const v = Qs.map((q, k) => q[a] * Math.sqrt(sig[k]) - mean[k]), nr = Math.hypot(...v) || 1;
+        E[w] = v.map(x => x / nr * sd); E[w].forEach((x, k) => vr[k] += x * x);
+        const o = Vs.map((y, k) => y[a] * Math.sqrt(sig[k])), no = Math.hypot(...o) || 1;
+        U[w] = o.map(x => x / no * sd);
+      });
+      const dims = [...Array(d).keys()].sort((a, b) => vr[b] - vr[a]).slice(0, 2);
+      return EMB_CACHE[d] = {E, U, dims};
     }
 
     function buildModel(cfg, toks) {
-      const set = new Set(CORPUS_VOCAB); toks.forEach(t => set.add(t));
-      const vocab = [...set].sort((a, b) => a === '.' ? -1 : b === '.' ? 1 : a.localeCompare(b));
-      const vid = {}; vocab.forEach((w, i) => vid[w] = i);
-      const E = Object.assign({}, learnEmb(cfg.d, cfg.seed));
-      const unknown = new Set();
-      for (const t of toks) if (!E[t]) {
-        unknown.add(t);
+      const d = cfg.d, base = learnEmb(d);
+      const E = Object.create(base.E), U = Object.create(base.U), vid = Object.create(CORPUS_ID);
+      const vocab = CORPUS_VOCAB.slice(), unknown = new Set();
+      for (const t of toks) if (!(t in E)) {
+        unknown.add(t); vid[t] = vocab.length; vocab.push(t);
         const r = mulberry32((hashStr(t) ^ Math.imul(cfg.seed, 2654435761)) >>> 0);
-        const v = Array.from({length: cfg.d}, () => gauss(r)); const nr = Math.hypot(...v);
-        E[t] = v.map(x => x / nr * Math.sqrt(cfg.d));
+        const v = Array.from({length: d}, () => gauss(r)); const nr = Math.hypot(...v);
+        E[t] = v.map(x => x / nr * Math.sqrt(d)); U[t] = v.map(() => 0);
       }
-      const d = cfg.d, r = mulberry32((cfg.seed * 7919 + d * 131 + 17) >>> 0);
+      const r = mulberry32((cfg.seed * 7919 + d * 131 + 17) >>> 0);
       const noisyI = (base, ns) => Array.from({length: d}, (_, i) => Array.from({length: d}, (_, j) => (i === j ? base : 0) + gauss(r) * ns / Math.sqrt(d)));
       const layers = [];
       for (let l = 0; l < cfg.L; l++) layers.push({
         Wq: noisyI(1, .45), Wk: noisyI(1, .45), Wv: noisyI(1, .4), Wo: noisyI(.6, .4),
-        W1: randMat(r, d, 2 * d, 1 / Math.sqrt(d)), W2: randMat(r, 2 * d, d, 1 / Math.sqrt(2 * d))
+        W1: randMat(r, d, 2 * d, 1 / Math.sqrt(d)), W2: randMat(r, 2 * d, d, .5 / Math.sqrt(2 * d))
       });
-      const varOf = k => {const xs = CORPUS_VOCAB.map(w => E[w][k]); const m = xs.reduce((a, b) => a + b, 0) / xs.length; return xs.reduce((a, b) => a + (b - m) ** 2, 0);};
-      const dims = [...Array(d).keys()].sort((a, b) => varOf(b) - varOf(a)).slice(0, 2);
-      return {vocab, vid, E, layers, V: vocab.length, unknown, dims};
+      return {vocab, vid, E, U, layers, V: vocab.length, unknown, dims: base.dims};
     }
 
     /* =====================================================================
@@ -306,8 +196,8 @@ il fait beau aujourd'hui`;
         X = Xo;
       });
       const h = X[n - 1], kn = ngram(tokens, model.vocab);
-      const scored = model.vocab.map(w => {
-        const net = dot(h, model.E[w]) / sq, lp = Math.log(Math.max(kn.P[w], 1e-12));
+      const scored = model.vocab.map((w, i) => {
+        const net = dot(h, model.U[w]) / sq, lp = Math.log(Math.max(kn.P[i], 1e-12));
         return {w, net, a: cfg.alpha * net, lp, b: cfg.beta * lp, z: cfg.alpha * net + cfg.beta * lp};
       }).sort((a, b) => b.z - a.z);
       S.push({key: 'logits', ctx, h, scored, kn});
@@ -318,7 +208,7 @@ il fait beau aujourd'hui`;
       const ks = kept.reduce((a, s) => a + s.p, 0); kept.forEach(s => s.q = s.p / ks);
       let chosen = kept[0], r = null;
       if (cfg.decode === 'sample') {
-        r = mulberry32((cfg.seed * 31 + g * 977 + 5) >>> 0)(); let c = 0;
+        r = mulberry32((cfg.seed * 31 + g * 977 + 5 + (cfg.draw || 0)) >>> 0)(); let c = 0;
         chosen = kept[K - 1];
         for (const s of kept) {c += s.q; if (r < c) {chosen = s; break;} }
       }
@@ -358,13 +248,13 @@ il fait beau aujourd'hui`;
       prob: {t: 'Probability', d: 'A chance from 0 to 1 (0% to 100%). All the candidates’ probabilities add up to 1.'},
       temperature: {t: 'Temperature', d: 'Scores are divided by it before softmax. Low temperature: the favourite almost always wins. High: surprises happen.'},
       topk: {t: 'Top-k', d: 'Only the k highest-scoring words may be chosen. Everything else is dropped before the draw.'},
-      ngram: {t: 'Training-text knowledge', d: 'Counts of which word followed which phrase in the training sentences. It stands in for what a real model learns in training.'},
-      depth: {t: 'Words to predict', d: 'How many words the model writes. Each new word means running all twelve steps again.'},
-      stop: {t: 'Stop at end of sentence', d: 'When the model predicts a full stop, it stops writing even if it could go on.'},
-      decode: {t: 'How to choose', d: 'Random draw picks a word with odds equal to its probability. Most likely always takes the top word.'},
+      ngram: {t: 'Training-text knowledge', d: 'Counts of which word followed which phrase (up to four words long) in the training sentences. It stands in for what a real model learns in training. At 0 the network is on its own.'},
+      depth: {t: 'Words to predict', d: 'How many words the model writes before it pauses. Each new word means running all twelve steps again. There is no upper limit: press “Keep writing” at the end for more.'},
+      stop: {t: 'Stop at end of sentence', d: 'When the model predicts a full stop, it stops writing, even if “Words to predict” allows more. Turn it off to let it start a new sentence.'},
+      decode: {t: 'How to choose', d: 'Random draw picks a word with odds equal to its probability, so each run can differ. Most likely always takes the top word, so temperature and top-k no longer change the result.'},
       vectorsize: {t: 'Vector size', d: 'How many numbers describe each word. Larger means more room for meaning. GPT-3 uses 12,288.'},
       layers: {t: 'Layers', d: 'How many times steps 4 to 10 are repeated. Real models stack dozens of layers.'},
-      seed: {t: 'Random seed', d: 'Starting point for every random number. Same seed, same result. Change it to see different draws.'},
+      seed: {t: 'Random seed', d: 'Starting point for the network’s random weights. Change it to get a slightly different network. The random draw itself is fresh on every run.'},
       speed: {t: 'Animation speed', d: 'How fast each step is animated.'},
       hvec: {t: 'Final vector h', d: 'The last word’s vector after all the layers. It now carries information from the whole sentence.'}
     };
@@ -419,7 +309,7 @@ il fait beau aujourd'hui`;
     function cellStyle(v, max, kind) {
       if (!isFinite(v)) return '';
       const a = kind === 'prob' ? Math.min(1, v) * .9 : Math.min(1, Math.abs(v) / max) * .9;
-      const rgb = kind === 'prob' ? '88,86,214' : v < 0 ? '0,122,255' : '255,149,0';
+      const rgb = kind === 'prob' ? '45,75,255' : v < 0 ? '0,122,255' : '255,149,0';
       return `background-color:rgba(${rgb},${(0.06 + a).toFixed(3)});${a > .5 ? 'color:#fff' : ''}`;
     }
     function matHTML(m) {
@@ -504,21 +394,21 @@ il fait beau aujourd'hui`;
       'Scores become odds, and one word is drawn.'
     ];
     const IC = {
-      tok: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"/>',
-      emb: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>',
-      pos: '<path d="M2 12c2.5-5 5-5 7.5 0s5 5 7.5 0 3.5-3.5 5-2"/><circle cx="5" cy="19" r="1.2"/><circle cx="12" cy="19" r="1.2"/><circle cx="19" cy="19" r="1.2"/>',
-      qkv: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3M19 4l2 2"/>',
-      score: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
-      mask: '<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M6.06 6.06A18.45 18.45 0 0 0 1 12s4 8 11 8a9.7 9.7 0 0 0 5.94-2.06"/><path d="M1 1l22 22"/>',
-      soft: '<path d="M19 5L5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
-      mix: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>',
-      norm: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
-      ffn: '<circle cx="5" cy="7" r="2"/><circle cx="5" cy="17" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="12" r="2"/><path d="M7 7l3-2M7 7l3 5M7 17l3-5M7 17l3 2M14 5l3 6M14 12h3M14 19l3-6"/>',
-      logits: '<path d="M18 20V10M12 20V4M6 20v-6"/>',
-      pick: '<path d="M12 2.5l2.1 6.4 6.4 2.1-6.4 2.1L12 19.5l-2.1-6.4L3.5 11l6.4-2.1z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/>'
+      tok: '<path d="M3 5h18"/><rect x="3" y="11" width="5" height="8" rx="1.6"/><rect x="10.5" y="11" width="4" height="8" rx="1.6"/><rect x="17" y="11" width="4" height="8" rx="1.6"/>',
+      emb: '<path d="M8 3H5v18h3M16 3h3v18h-3"/><g fill="currentColor" stroke="none"><circle cx="12" cy="7.5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="16.5" r="1.5"/></g>',
+      pos: '<path d="M2 9c1.67-4 3.33-4 5 0s3.33 4 5 0 3.33-4 5 0 3.33 4 5 0"/><path d="M3 20h18M6 17v3M12 17v3M18 17v3"/>',
+      qkv: '<circle cx="5" cy="12" r="2.2"/><path d="M7.2 12H11c3 0 3-7 6-7M11 12h6M11 12c3 0 3 7 6 7"/><g fill="currentColor" stroke="none"><circle cx="19" cy="5" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="19" cy="19" r="2"/></g>',
+      score: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><rect x="9" y="9" width="6" height="6" fill="currentColor" stroke="none"/>',
+      mask: '<path d="M3 3h6v6h6v6h6v6H3z" fill="currentColor" fill-opacity=".3"/><path d="M12 3h9v9" stroke-dasharray="2 3.2"/>',
+      soft: '<circle cx="12" cy="12" r="9"/><path d="M12 12V3a9 9 0 0 1 6.36 15.36z" fill="currentColor" fill-opacity=".3"/>',
+      mix: '<path d="M3 5c7 0 6 7 13 7M3 19c7 0 6-7 13-7M3 12h17M17 8.5l3.5 3.5-3.5 3.5"/>',
+      norm: '<path d="M2 20c5 0 5.5-12 10-12s5 12 10 12"/><path d="M5 3v5M2.5 5.5h5"/>',
+      ffn: '<path stroke-width="1.4" d="M5 7l7-3M5 7l7 5M5 7l7 13M5 17l7-13M5 17l7-5M5 17l7 3M12 4l7 8M12 12h7M12 20l7-8"/><g fill="currentColor" stroke="none"><circle cx="5" cy="7" r="2.2"/><circle cx="5" cy="17" r="2.2"/><circle cx="12" cy="4" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="12" cy="20" r="2.2"/><circle cx="19" cy="12" r="2.2"/></g>',
+      logits: '<path stroke-width="3" d="M4 6h16M4 12h11M4 18h6"/>',
+      pick: '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><g fill="currentColor" stroke="none"><circle cx="8.5" cy="8.5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="15.5" cy="15.5" r="1.6"/></g>'
     };
     const svgI = k => `<svg class="icon" viewBox="0 0 24 24">${IC[k]}</svg>`;
-    const tile = k => {const i = KEYS.indexOf(k), c = COLORS[i]; return `<div class="tile${c === 'ai' ? ' ai' : ''}" style="--c:${c === 'ai' ? '#bf5af2' : c}">${svgI(k)}</div>`;};
+    const tile = k => {const i = KEYS.indexOf(k), c = COLORS[i]; return `<div class="tile${c === 'ai' ? ' ai' : ''}" style="--c:${c === 'ai' ? '#151515' : c}">${svgI(k)}</div>`;};
 
     /* slide shell: centred head, one big card, "Learn more" underneath */
     function shell(st, {title, sub, vis, more, lesson, hint = true, glow = false}) {
@@ -545,7 +435,8 @@ il fait beau aujourd'hui`;
           sub: `The sentence is cut into ${tm('token', 'tokens')}, and each one is swapped for its number in the ${tm('vocab', 'vocabulary')}.`,
           vis: `<div class="toks">${toks}</div>
       <div class="stats"><div class="stat"><b>${model.V}</b><span>words in the vocabulary</span></div><div class="stat"><b>${n}</b><span>tokens in your sentence</span></div><div class="stat"><b class="grad">1</b><span>word to predict</span></div></div>`,
-          more: `<p>A computer can’t do maths with letters, so every token gets a fixed ID number. The vocabulary here holds every word in the model’s small training text, plus any new words you typed.</p>
+          more: `<p>A computer can’t do maths with letters, so every token gets a fixed ID number. The vocabulary here holds every word in the model’s training text, plus any new words you typed.</p>
+      <p>However long the text gets, this model only looks at the last ${CONTEXT} words. That is its context window; real models have windows of many thousands of tokens.</p>
       <p>Real models like ChatGPT split text into smaller pieces called sub-words, so even rare words can be built from known parts. Their vocabularies hold about 100,000 tokens.</p>
       ${unk.length ? `<p><b>Heads-up:</b> “${unk.map(esc).join('”, “')}” never appears in the training text, so the model has no idea what ${unk.length > 1 ? 'those words mean' : 'it means'}.</p>` : ''}
       <div class="formula">“${esc(tokens.join(' '))}” → [${tokens.map(t => model.vid[t]).join(', ')}]</div>`, hint: false
@@ -562,7 +453,8 @@ il fait beau aujourd'hui`;
       const px = w => 22 + (E[w][dx] - x0) / ((x1 - x0) || 1) * 456, py = w => 22 + (1 - (E[w][dy] - y0) / ((y1 - y0) || 1)) * 276;
       const mine = [...new Set(tokens)], pal = ['#ff2d55', '#5856d6', '#ff9500', '#34c759', '#007aff', '#af52de', '#30b0c7', '#ff3b30'];
       let svg = '';
-      words.forEach((w, i) => {if (!mine.includes(w)) svg += `<circle class="dot" style="animation-delay:${(i % 30) * 20}ms" cx="${px(w).toFixed(1)}" cy="${py(w).toFixed(1)}" r="3" fill="#c7c7cc"/>`;});
+      const every = Math.ceil(words.length / 450);
+      words.forEach((w, i) => {if (i % every === 0 && !mine.includes(w)) svg += `<circle class="dot" style="animation-delay:${(i % 30) * 20}ms" cx="${px(w).toFixed(1)}" cy="${py(w).toFixed(1)}" r="3" fill="#c7c7cc"/>`;});
       const placed = [];
       mine.forEach((w, i) => {
         const x = px(w), y = py(w), c = pal[i % 8], wd = w.length * 8.4 + 18;
@@ -692,12 +584,12 @@ il fait beau aujourd'hui`;
         t.style.setProperty('--w', j <= q ? Math.min(1, A[q][j] * 1.6).toFixed(2) : 0);
       });
       const pts = toks.map(t => {const r = t.getBoundingClientRect(); return {x: r.left + r.width / 2 - br.left, y: r.top - br.top};});
-      let paths = '<defs><linearGradient id="ag" x1="0" x2="1"><stop offset="0" stop-color="#30b0c7"/><stop offset=".5" stop-color="#5856d6"/><stop offset="1" stop-color="#ff2d55"/></linearGradient></defs>';
+      let paths = '';
       for (let j = 0; j <= q; j++) {
         const w = A[q][j], p = pts[q], k = pts[j];
         const d = j === q ? `M${p.x - 12},${p.y} C${p.x - 36},${p.y - 66} ${p.x + 36},${p.y - 66} ${p.x + 12},${p.y}`
           : (() => {const hh = Math.min(150, 36 + Math.abs(p.x - k.x) * .5); return `M${p.x},${p.y} C${p.x},${p.y - hh} ${k.x},${p.y - hh} ${k.x},${k.y}`;})();
-        paths += `<path d="${d}" fill="none" stroke="url(#ag)" stroke-linecap="round" stroke-width="${(1.5 + 12 * w).toFixed(1)}" opacity="${(.25 + .75 * w).toFixed(2)}"/>`;
+        paths += `<path d="${d}" fill="none" stroke="#2d4bff" stroke-linecap="round" stroke-width="${(1.5 + 12 * w).toFixed(1)}" opacity="${(.25 + .75 * w).toFixed(2)}"/>`;
       }
       svg.innerHTML = paths;
       if (animate) svg.querySelectorAll('path').forEach((p, i) => {
@@ -788,7 +680,7 @@ il fait beau aujourd'hui`;
       const {tokens, n, d, cfg, model} = st.ctx, kn = st.kn, last = tokens[n - 1];
       const top = st.scored.slice(0, 8), zmin = top[top.length - 1].z - 1, zmax = top[0].z;
       let k = `<h6>What the training text says</h6><div class="tries">${kn.tries.map(t => `<span class="try ${t.ok ? 'ok' : 'no'}">“${esc(t.c)} …”</span>`).join('')}</div>`;
-      if (kn.match) k += `<div style="font-size:15px">“<b>${esc(kn.match.c)}</b>” appeared ${kn.match.tot} time${kn.match.tot > 1 ? 's' : ''}. It was followed by:</div><div class="follow">${kn.match.items.slice(0, 8).map(([w, c], i) => `<span class="pill" style="animation-delay:${200 + i * 80}ms">${esc(lab(w))}<small>${c}×</small></span>`).join('')}</div>`;
+      if (kn.match) k += `<div style="font-size:15px">${kn.match.skip ? `“${esc(last)}” is new to the model, so it skips it and looks at the words before. ` : ''}“<b>${esc(kn.match.c)}</b>” appeared ${kn.match.tot} time${kn.match.tot > 1 ? 's' : ''}. It was followed by:</div><div class="follow">${kn.match.items.slice(0, 8).map(([w, c], i) => `<span class="pill" style="animation-delay:${200 + i * 80}ms">${esc(lab(w))}<small>${c}×</small></span>`).join('')}</div>`;
       else k += `<div style="font-size:15px">“${esc(last)}” never appeared in the training text, so the model falls back on how common each word is. Expect a weak guess.</div>`;
       const rows = top.map((s, i) => `<div class="lb-row${i < cfg.topk ? ' in' : ''}" style="--i:${i}"><span class="n" style="text-align:left">${i + 1}</span><span class="w">${esc(lab(s.w))}</span><span class="lbar"><i data-w="${(6 + 94 * (s.z - zmin) / ((zmax - zmin) || 1)).toFixed(1)}"></i></span><span class="n hx">${f(s.a)}</span><span class="n hx">${f(s.b)}</span><span class="z">${f(s.z)}</span></div>`).join('');
       return {
@@ -798,9 +690,9 @@ il fait beau aujourd'hui`;
           vis: `<div class="kcard">${k}</div>
       ${eq(mat('h', `Final vector of “${esc(last)}”`, [st.h], [`${n - 1} ${last}`], st.ctx.dl, {g: 'hvec'}))}
       <div class="lb"><div class="lb-row head"><span></span><span>Word</span><span>Score</span><span class="n hx">Network</span><span class="n hx">Training text</span><span class="n">Total</span></div>${rows}</div>`,
-          more: `<p>Each word’s score has two parts. The <b>network</b> part checks how well the final vector lines up with that word’s embedding (a dot product). The <b>training text</b> part is the log of how often that word followed this phrase.</p>
+          more: `<p>Each word’s score has two parts. The <b>network</b> part checks how well the final vector lines up with that word’s output vector (a dot product). The <b>training text</b> part is the log of how likely that word is after this phrase, judged from the counts above. Longer phrases count most.</p>
       <p>A real model keeps all of this inside its trained weights after reading billions of words. This tiny model isn’t trained by gradient descent, so the counted phrases stand in for training. Set “Training-text strength” to 0 to watch the raw network babble.</p>
-      <div class="formula">${M('z')}(${M('w')}) = ${cfg.alpha} · ${M('h')}·${M('E')}[${M('w')}] ÷ √${d} + ${cfg.beta} · log ${M('P')}(${M('w')} | “${esc(kn.match ? kn.match.c : last)}”)</div>`,
+      <div class="formula">${M('z')}(${M('w')}) = ${cfg.alpha} · ${M('h')}·${M('U')}[${M('w')}] ÷ √${d} + ${cfg.beta} · log ${M('P')}(${M('w')} | “${esc(kn.match ? kn.match.c : last)}”)</div>`,
           lesson: ['dot', 'What is a dot product?'], hint: false
         }),
         anims: [aWait(250), async () => {$$('#slide .lbar i').forEach(b => b.style.width = b.dataset.w + '%'); await sleep(1500);}],
@@ -808,7 +700,7 @@ il fait beau aujourd'hui`;
       };
     };
 
-    const PCOL = ['#bf5af2', '#0a84ff', '#ff375f', '#ff9f0a', '#30d158', '#64d2ff', '#5e5ce6', '#ff6482'];
+    const PCOL = ['#ff5a3c', '#2d4bff', '#2fc8a0', '#af52de', '#e0457b', '#0f9bb5', '#8a6d3b', '#5856d6'];
     R.pick = st => {
       const {cfg} = st.ctx, kept = st.kept, ch = st.chosen, sample = cfg.decode === 'sample';
       const bars = kept.map((s, i) => `<div class="prow"><span class="w">${esc(lab(s.w))}</span><span class="bar" style="--c:${PCOL[i % 8]}"><i data-w="${(s.q / kept[0].q * 100).toFixed(1)}"></i></span><span class="v">${pct(s.q)}</span></div>`).join('');
@@ -845,12 +737,12 @@ il fait beau aujourd'hui`;
     };
 
     R.done = () => {
-      const it = SIM.iters, all = it[it.length - 1].tokens.concat([it[it.length - 1].next]);
-      const words = all.map((t, i) => `<span class="${i >= SIM.nIn ? 'gen' : ''}${t === '.' ? ' punct' : ''}" style="--i:${i}">${esc(t)}</span>`).join('');
-      const rows = it.map((x, k) => `<div class="hrow"><span class="n">${k + 1}</span><span class="ctx">…${esc(x.tokens.slice(-3).join(' '))} → <b class="grad">${esc(lab(x.next))}</b></span><span class="alt">${x.top.map(t => `${esc(lab(t.w))} ${pct(t.q)}`).join('  ·  ')}</span></div>`).join('');
+      const it = SIM.iters, all = SIM.full, skip = Math.max(0, it.length - 12);
+      const words = all.map((t, i) => `<span class="${i >= SIM.nIn ? 'gen' : ''}${t === '.' ? ' punct' : ''}" style="--i:${Math.min(i, 24)}">${esc(t)}</span>`).join('');
+      const rows = (skip ? `<div class="hrow"><span class="n">…</span><span class="ctx">${skip} earlier word${skip > 1 ? 's' : ''}</span><span class="alt"></span></div>` : '') + it.slice(skip).map((x, j) => [x, j + skip]).map(([x, k]) => `<div class="hrow"><span class="n">${k + 1}</span><span class="ctx">…${esc(x.tokens.slice(-3).join(' '))} → <b class="grad">${esc(lab(x.next))}</b></span><span class="alt">${x.top.map(t => `${esc(lab(t.w))} ${pct(t.q)}`).join('  ·  ')}</span></div>`).join('');
       return {
         html: `<div class="s-head"><div class="tile ai">${svgI('pick')}</div><div class="s-step">${it.length} word${it.length > 1 ? 's' : ''} written</div><h2>That’s how it’s done.</h2><p class="s-sub">Run the network, choose one word, add it, repeat. ChatGPT-sized models do exactly this, with about a hundred layers and billions of multiplications for every single word.</p></div>
-    <div class="cardwrap"><div class="s-card"><div class="final">${words}</div><div class="hist">${rows}</div><div class="btns"><button class="pillbtn" id="replay">Watch again</button><button class="pillbtn gray" id="newOne">Try another sentence</button></div></div></div>`,
+    <div class="cardwrap"><div class="s-card"><div class="final${all.length > 28 ? ' long' : ''}">${words}</div><div class="hist">${rows}</div><div class="btns"><button class="pillbtn" id="more">Keep writing</button><button class="pillbtn gray" id="replay">Watch again</button><button class="pillbtn gray" id="newOne">Try another sentence</button></div></div></div>`,
         anims: [aWait(500)]
       };
     };
@@ -962,6 +854,8 @@ il fait beau aujourd'hui`;
     const CFG = {depth: 5, stop: true, d: 6, L: 1, temp: 0.9, topk: 3, decode: 'sample', beta: 2, seed: 7, speed: 1};
     let SIM = null, pos = 0, CUR = null, animTok = 0, playing = false, playTimer = null, animDone = false, coachLeft = 2;
     const readCfg = () => Object.assign({}, CFG, {alpha: 0.3});
+    const DEFAULTS = Object.assign({}, CFG);
+    const CONTEXT = 24;   // the model only looks at this many of the latest words, like a real model’s context window
     const PLAY = '<svg class="icon" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>';
     const PAUSE = '<svg class="icon" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><rect x="6" y="4" width="4.5" height="16" rx="1.2"/><rect x="13.5" y="4" width="4.5" height="16" rx="1.2"/></svg>';
     $('#play').innerHTML = PLAY;
@@ -972,36 +866,43 @@ il fait beau aujourd'hui`;
       toks = toks.slice(0, 14);
       $('#wait').classList.add('on');
       setTimeout(() => {
-        const cfg = readCfg(), model = buildModel(cfg, toks);
+        const cfg = Object.assign(readCfg(), {draw: (Math.random() * 4294967296) >>> 0}), model = buildModel(cfg, toks);
         SPEED = CFG.speed; document.body.style.setProperty('--spd', SPEED);
-        const iters = [], steps = []; let cur = toks.slice();
-        for (let g = 0; g < cfg.depth; g++) {
-          const r = runIteration(cur, g, model, cfg);
-          iters.push({tokens: cur.slice(), next: r.next, top: r.top});
-          r.stages.forEach(st => steps.push({g, st}));
-          cur = cur.concat([r.next]);
-          if (cfg.stop && r.next === '.') break;
-        }
-        steps.push({g: iters.length - 1, st: {key: 'done'}});
-        SIM = {cfg, model, iters, steps, nIn: toks.length};
+        SIM = {cfg, model, iters: [], steps: [], full: toks.slice(), nIn: toks.length};
+        writeWords(cfg.depth);
         $('#wait').classList.remove('on');
-        $('#setup').classList.remove('on'); $('#sim').classList.add('on');
+        $('#setup').classList.remove('on'); $('#sim').classList.add('on'); document.body.classList.add('in-sim');
         window.scrollTo(0, 0);
         go(0, 'fwd');
       }, 40);
     }
 
+    /* Write up to `count` more words onto the current run. Called again by “Keep writing”, so a run never has to end. */
+    function writeWords(count) {
+      const {cfg, model, iters, steps, full} = SIM;
+      if (steps.length && steps[steps.length - 1].st.key === 'done') steps.pop();
+      for (let k = 0; k < count; k++) {
+        const g = iters.length, tokens = full.slice(-CONTEXT), r = runIteration(tokens, g, model, cfg);
+        iters.push({tokens, from: full.length - tokens.length, next: r.next, top: r.top});
+        r.stages.forEach(st => steps.push({g, st}));
+        full.push(r.next);
+        if (cfg.stop && r.next === '.') break;
+      }
+      steps.push({g: iters.length - 1, st: {key: 'done'}});
+    }
+    function keepWriting(count) {const at = SIM.steps.length - 1; writeWords(count); go(at, 'fwd');}
+
     function renderTop() {
       const {g, st} = SIM.steps[pos], it = SIM.iters[g], isDone = st.key === 'done';
       const toks = isDone ? it.tokens.concat([it.next]) : it.tokens;
-      $('#sentence').innerHTML = toks.map((t, i) => `<span class="${i >= SIM.nIn ? 'gen' : ''}${t === '.' ? ' punct' : ''}">${esc(t)}</span>`).join('') + (isDone ? '' : '<span class="slot" id="slot">?</span>');
+      $('#sentence').innerHTML = (it.from > 0 ? `<span class="older" title="Earlier words are outside the model’s ${CONTEXT}-word context window">…</span>` : '') + toks.map((t, i) => `<span class="${it.from + i >= SIM.nIn ? 'gen' : ''}${t === '.' ? ' punct' : ''}">${esc(t)}</span>`).join('') + (isDone ? '' : '<span class="slot" id="slot">?</span>');
       $('#counter').textContent = isDone ? 'Finished' : `Word ${g + 1} of ${SIM.iters.length}`;
       const k = isDone ? KEYS.length : KEYS.indexOf(st.key);
-      $('#prog').innerHTML = KEYS.map((key, i) => `<button class="pseg${i < k ? ' done' : ''}${i === k ? ' cur' : ''}" data-key="${key}" style="--c:${COLORS[i] === 'ai' ? '#bf5af2' : COLORS[i]}" aria-label="Step ${i + 1}: ${NAMES[i]}" title="${NAMES[i]}"><i></i></button>`).join('');
+      $('#prog').innerHTML = KEYS.map((key, i) => `<button class="pseg${i < k ? ' done' : ''}${i === k ? ' cur' : ''}" data-key="${key}" style="--c:${COLORS[i] === 'ai' ? '#151515' : COLORS[i]}" aria-label="Step ${i + 1}: ${NAMES[i]}" title="${NAMES[i]}"><i></i></button>`).join('');
       const li = st.layer != null && SIM.cfg.L > 1 ? ` · Layer ${st.layer + 1} of ${SIM.cfg.L}` : '';
       $('#plabel').textContent = isDone ? 'All twelve steps, done' : `${k + 1}. ${NAMES[k]}${li}`;
       $('#prev').disabled = pos === 0; $('#next').disabled = pos === SIM.steps.length - 1;
-      $('#nextTok').disabled = isDone; $('#skip').disabled = false;
+      $('#nextTok').disabled = false; $('#nextTok').textContent = isDone ? 'Keep writing' : 'Next word'; $('#skip').disabled = false;
     }
 
     function go(p, dir = 'fwd') {
@@ -1022,7 +923,7 @@ il fait beau aujourd'hui`;
       await sleep(420); if (dead()) return;
       const cw = $('#slide .cardwrap');
       if (cw) {
-        const r = cw.getBoundingClientRect(), bar = $('.simbar').offsetHeight;
+        const sb = $('.simbar'), r = cw.getBoundingClientRect(), bar = sb.offsetHeight + (parseFloat(getComputedStyle(sb).top) || 0);
         if (r.bottom > innerHeight - 110 && r.top > bar + 20) {window.scrollTo({top: scrollY + r.top - bar - 14, behavior: 'smooth'}); await sleep(450); if (dead()) return;}
       }
       for (const fn of CUR.anims || []) {if (dead()) return; await fn(dead);}
@@ -1051,6 +952,7 @@ il fait beau aujourd'hui`;
       $$('#slide .atk').forEach(t => t.onclick = () => {drawArcs(+t.dataset.q, true); $('#qname').textContent = t.querySelector('span').textContent;});
       $$('#slide .more-btn').forEach(b => b.onclick = () => b.parentElement.classList.toggle('open'));
       const rp = $('#replay'); if (rp) rp.onclick = () => go(0, 'fwd');
+      const mo = $('#more'); if (mo) mo.onclick = () => keepWriting(SIM.cfg.depth);
       const nw = $('#newOne'); if (nw) nw.onclick = exitSim;
     }
 
@@ -1092,18 +994,25 @@ il fait beau aujourd'hui`;
       if (idx < 0) idx = SIM.steps.findIndex(s => s.g === g && s.st.key === key);
       if (idx >= 0) {setPlay(false); go(idx, idx < pos ? 'bwd' : 'fwd');}
     });
-    function exitSim() {setPlay(false); animTok++; closeDrawer(); removeCoach(); hidePop(); $('#sim').classList.remove('on'); $('#setup').classList.add('on'); window.scrollTo(0, 0); heroUpdate();}
+    function exitSim() {setPlay(false); animTok++; closeDrawer(); removeCoach(); hidePop(); $('#sim').classList.remove('on'); $('#setup').classList.add('on'); document.body.classList.remove('in-sim'); window.scrollTo(0, 0); heroUpdate();}
 
     $('#prev').onclick = () => {setPlay(false); go(pos - 1, 'bwd');};
     $('#next').onclick = () => {setPlay(false); go(pos + 1, 'fwd');};
     $('#skip').onclick = () => skipAnim();
     $('#play').onclick = () => setPlay(!playing);
-    $('#nextTok').onclick = () => {setPlay(false); const g = SIM.steps[pos].g; const i = SIM.steps.findIndex((s, k) => k > pos && (s.g > g || s.st.key === 'done')); go(i < 0 ? SIM.steps.length - 1 : i, 'fwd');};
+    $('#nextTok').onclick = () => {setPlay(false); if (SIM.steps[pos].st.key === 'done') {keepWriting(1); return;} const g = SIM.steps[pos].g; const i = SIM.steps.findIndex((s, k) => k > pos && (s.g > g || s.st.key === 'done')); go(i < 0 ? SIM.steps.length - 1 : i, 'fwd');};
     $('#exit').onclick = exitSim;
+    /* the top nav is shared by both screens: its links lead back to the home page */
+    $('.nav').addEventListener('click', e => {
+      const a = e.target.closest('a[href^="#"]'); if (!a) return;
+      const inSim = $('#sim').classList.contains('on'); if (inSim) exitSim();
+      if (a.id === 'brand') {e.preventDefault(); if (!inSim) window.scrollTo({top: 0, behavior: 'smooth'});}
+    });
     $('#start').onclick = startSim;
     $('#inp').addEventListener('keydown', e => {if (e.key === 'Enter') startSim();});
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {closeDrawer(); hidePop(); closeLesson(); return;}
+      if (e.key === 'Escape') {closeDrawer(); hidePop(); closeLesson(); closeSettings(); return;}
+      if ($('#setBg').classList.contains('on')) return;
       if ($('#lessonBg').classList.contains('on')) {if (e.key === 'ArrowRight') $('#lNext').click(); if (e.key === 'ArrowLeft') $('#lBack').click(); return;}
       if (!$('#sim').classList.contains('on') || ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
       if (e.key === 'ArrowRight') {setPlay(false); go(pos + 1, 'fwd');}
@@ -1115,41 +1024,120 @@ il fait beau aujourd'hui`;
     /* =====================================================================
        LANDING
        ===================================================================== */
-    const heat = v => {const s = [[28, 28, 30], [94, 92, 230], [191, 90, 242], [100, 210, 255]], t = Math.sqrt(Math.max(0, Math.min(1, v))) * 3, k = Math.min(2, Math.floor(t)), u = t - k; return `rgb(${s[k].map((c, i) => Math.round(c + (s[k + 1][i] - c) * u)).join(',')})`;};
-    let heroTimer = null;
+    const TILT = [-1.6, 1.1, -.6, 1.7, -1.2, .7];
+    let heroTimer = null, heroA = null, heroToks = [], heroSel = 0, heroSpin = null, heroPrev = '';
     function heroUpdate() {
-      const toks = tokenize($('#inp').value).slice(0, 9), box = $('#heroMat');
-      if (!toks.length) {box.innerHTML = '<p style="color:#a1a1a6">Type a few words above to see them attend to each other.</p>'; box.dataset.words = ''; $('#heroNext').textContent = '…'; return;}
-      const cfg = Object.assign(readCfg(), {L: 1, decode: 'greedy'});
+      const toks = tokenize($('#inp').value).slice(0, 12), box = $('#heroMat');
+      settingsLine(); if ($('#setBg').classList.contains('on')) previewUpdate();
+      clearInterval(heroSpin);
+      if (!toks.length) {heroA = null; box.innerHTML = '<p class="muted">Type a few words and they will show up here.</p>'; $('#heroListen').textContent = ''; $('#heroTop').innerHTML = ''; return;}
+      const cfg = Object.assign(readCfg(), {decode: 'greedy'});
       const model = buildModel(cfg, toks), r = runIteration(toks, 0, model, cfg);
-      const A = r.stages.find(s => s.key === 'soft').A, n = toks.length, showPct = n <= 7;
-      if (box.dataset.words !== toks.join(' ')) {
-        const tilt = n > 5 || toks.some(t => t.length > 6);
-        let h = `<div class="hgrid${tilt ? ' tilt' : ''}" style="grid-template-columns:auto repeat(${n},minmax(0,1fr))"><div></div>${toks.map(t => `<div class="ch"><span>${esc(t)}</span></div>`).join('')}`;
-        for (let i = 0; i < n; i++) {
-          h += `<div class="rh">${esc(toks[i])}</div>`;
-          for (let j = 0; j < n; j++) h += j > i ? '<div class="hc mask"></div>' : `<div class="hc" data-i="${i}" data-j="${j}" style="background:#1c1c1e"></div>`;
-        }
-        box.innerHTML = h + '</div>'; box.dataset.words = toks.join(' ');
-        box.getBoundingClientRect();
+      heroA = r.stages.filter(s => s.key === 'soft').pop().A; heroToks = toks; heroSel = toks.length - 1;
+      box.innerHTML = '<svg class="harcs" aria-hidden="true"></svg>' + toks.map((t, i) => `<button class="wt" data-i="${i}" style="--r:${TILT[i % 6]}deg">${esc(t)}</button>`).join('') + `<span class="wt guess" id="heroNext">${esc(lab(r.next))}</span>`;
+      heroArcs(); showCands($('#heroTop'), r.top);
+      /* a new guess flips through the candidates before it settles, like a reel */
+      const key = toks.join(' ') + '>' + r.next, g = $('#heroNext'), pool = r.top.map(t => lab(t.w));
+      if (key !== heroPrev && pool.length > 1 && !matchMedia('(prefers-reduced-motion:reduce)').matches) {
+        let k = 0; heroSpin = setInterval(() => {g.textContent = pool[k % pool.length]; if (++k > 7) {clearInterval(heroSpin); g.textContent = lab(r.next);} }, 75);
       }
-      box.querySelectorAll('.hc[data-i]').forEach(c => {const v = A[+c.dataset.i][+c.dataset.j]; c.style.background = heat(v); c.textContent = showPct ? Math.round(v * 100) + '%' : '';});
-      const nb = $('#heroNext'); if (nb.textContent !== lab(r.next)) {nb.textContent = lab(r.next); nb.animate([{opacity: 0, transform: 'translateY(10px)', filter: 'blur(6px)'}, {opacity: 1, transform: 'none', filter: 'none'}], {duration: 600, easing: 'cubic-bezier(.2,.9,.1,1)'});}
+      heroPrev = key;
+    }
+    /* arcs from the chosen word to the earlier words it listens to; thicker means it listens more */
+    function heroArcs() {
+      const box = $('#heroMat'), svg = box.querySelector('.harcs'); if (!svg || !heroA) return;
+      const b = box.getBoundingClientRect(), tiles = [...box.querySelectorAll('.wt[data-i]')], q = Math.min(heroSel, tiles.length - 1);
+      const top = el => {const r = el.getBoundingClientRect(); return [r.left - b.left + r.width / 2, r.top - b.top];};
+      const [qx, qy] = top(tiles[q]); let h = '';
+      for (let j = 0; j < q; j++) {
+        const w = heroA[q][j]; if (w < .015) continue;
+        const [x, y] = top(tiles[j]), lift = Math.min(88, 24 + Math.abs(qx - x) * .3);
+        h += `<path d="M${qx.toFixed(1)} ${qy.toFixed(1)}C${qx.toFixed(1)} ${(qy - lift).toFixed(1)} ${x.toFixed(1)} ${(y - lift).toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)}" stroke-width="${(1.5 + 11 * w).toFixed(1)}" opacity="${(.3 + .7 * w).toFixed(2)}"/>`;
+      }
+      svg.innerHTML = h;
+      tiles.forEach((t, i) => {t.classList.toggle('sel', i === q); t.classList.toggle('fut', i > q); t.style.setProperty('--w', i < q ? heroA[q][i].toFixed(3) : 0);});
+      const rank = heroA[q].slice(0, q + 1).map((w, j) => [j, w]).sort((x, y) => y[1] - x[1]).slice(0, 3);
+      $('#heroListen').innerHTML = `<b>“${esc(heroToks[q])}”</b> listens to ` + rank.map(([j, w]) => `${j === q ? 'itself' : `“${esc(heroToks[j])}”`} ${Math.round(w * 100)}%`).join(' · ') + (q ? '' : ' (it comes first, so there is nobody else)') + '<span> · point at another word</span>';
+    }
+    const heroPick = e => {const t = e.target.closest('.wt[data-i]'); if (t && +t.dataset.i !== heroSel) {heroSel = +t.dataset.i; heroArcs();} };
+    ['pointerover', 'focusin', 'click'].forEach(ev => $('#heroMat').addEventListener(ev, heroPick));
+    $('#heroMat').addEventListener('pointerleave', e => {if (e.pointerType === 'mouse' && heroA && heroSel !== heroToks.length - 1) {heroSel = heroToks.length - 1; heroArcs();} });
+    addEventListener('resize', heroArcs);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(heroArcs);
+    function showCands(box, list) {
+      if (box.children.length !== list.length) box.innerHTML = list.map(() => '<div class="cand"><span></span><div class="cbar"><i></i></div><em></em></div>').join('');
+      list.forEach((t, i) => {const c = box.children[i], p = Math.round(t.q * 100); c.querySelector('span').textContent = lab(t.w); c.querySelector('i').style.width = Math.max(2, p) + '%'; c.querySelector('em').textContent = p + '%';});
+    }
+    /* write a continuation with the given settings, without building slides (previews and the examples list) */
+    function quickWrite(toks, cfg, max) {
+      const model = buildModel(cfg, toks), words = [], full = toks.slice(); let first = null;
+      for (let g = 0; g < max; g++) {
+        const r = runIteration(full.slice(-CONTEXT), g, model, cfg); if (!g) first = r;
+        words.push(r.next); full.push(r.next);
+        if (cfg.stop && r.next === '.') break;
+      }
+      return {words, first, text: words.join(' ').replace(/ \./g, '.')};
+    }
+    /* in the settings pop-up: what the current settings write for the sentence in the box, and the odds behind the first word */
+    function previewUpdate() {
+      const toks = tokenize($('#inp').value).slice(0, 14), out = $('#pvOut');
+      if (!toks.length) {out.textContent = 'Type a sentence on the home page to preview it here.'; $('#pvTop').innerHTML = ''; $('#pvNote').textContent = ''; return;}
+      const cfg = readCfg(), cap = Math.min(cfg.depth, 30), w = quickWrite(toks, cfg, cap);
+      out.innerHTML = `${esc(toks.join(' '))} <b>${esc(w.text)}</b>${w.words.length === cap && cap < cfg.depth ? ' …' : ''}`;
+      showCands($('#pvTop'), w.first.stages[w.first.stages.length - 1].kept);
+      $('#pvNote').textContent = (w.words.length === cap && cap < cfg.depth ? `First ${cap} of up to ${cfg.depth} words` : `${w.words.length} of up to ${cfg.depth} word${cfg.depth > 1 ? 's' : ''} written`) + (cfg.decode === 'sample' ? ' · random draw, so a real run can differ' : ' · always the most likely word');
+    }
+    function settingsLine() {
+      const c = CFG;
+      $('#setLine').textContent = `Up to ${c.depth} word${c.depth > 1 ? 's' : ''} · ${c.decode === 'sample' ? 'random draw' : 'most likely word'} · temperature ${c.temp.toFixed(1)} · top-k ${c.topk}`;
     }
     $('#inp').addEventListener('input', () => {clearTimeout(heroTimer); heroTimer = setTimeout(heroUpdate, 150);});
 
-    const EXAMPLES = ['hello', 'the dog sat on the', 'i love to', 'good morning', 'the model predicts the', 'the sun rises in the', 'can you help', 'bonjour comment'];
-    $('#examples').innerHTML = EXAMPLES.map(x => `<button class="chip">${x}</button>`).join('');
-    $$('#examples .chip').forEach(x => x.onclick = () => {$('#inp').value = x.textContent; heroUpdate(); startSim();});
-    $('#gallery').innerHTML = KEYS.map((k, i) => `<article class="gcard">${tile(k)}<div class="n">Step ${i + 1}</div><h4>${NAMES[i]}</h4><p>${ABOUT[i]}</p></article>`).join('');
-    $('#gPrev').onclick = () => $('#gallery').scrollBy({left: -560, behavior: 'smooth'});
-    $('#gNext').onclick = () => $('#gallery').scrollBy({left: 560, behavior: 'smooth'});
+    /* example sentences: a few next to the box, and a longer list by theme with the model’s own answer in grey */
+    const EXAMPLES = ['once upon a time', 'the capital of france is', 'two plus three is', 'bonjour comment'];
+    const TRY = [
+      ['Stories', ['once upon a time', 'one day a little', 'the bird flew']],
+      ['Facts', ['the capital of france is', 'the opposite of hot is', 'the lion lives']],
+      ['Numbers and dates', ['two plus three is', 'after monday comes', 'there are seven days in']],
+      ['Everyday talk', ['hello', 'good morning', 'can you help']],
+      ['About itself', ['the model predicts the', 'attention is', 'a token is']],
+      ['Français', ['bonjour comment', 'je suis', 'le chat']]
+    ];
+    const TRYCOL = ['#ff5a3c', '#2d4bff', '#2fc8a0', '#ffd23f', '#af52de', '#151515'];
+    $('#examples').innerHTML = EXAMPLES.map(x => `<button class="tryword" data-try="${x}">${x}</button>`).join(', ');
+    $('#tryList').innerHTML = TRY.map(([k, xs], i) => `<div class="trycard" style="--c:${TRYCOL[i % 6]}"><h3>${k}</h3>${xs.map(x => `<button class="trylink" data-try="${x}"><span>${x}</span> <i></i></button>`).join('')}</div>`).join('');
+    $('#steps12').innerHTML = KEYS.map((k, i) => `<li><span class="sq" style="--c:${COLORS[i] === 'ai' ? '#151515' : COLORS[i]}">${svgI(k)}</span><small>${String(i + 1).padStart(2, '0')}</small><span>${NAMES[i]}</span></li>`).join('');
+    document.addEventListener('click', e => {const t = e.target.closest('[data-try]'); if (t) {$('#inp').value = t.dataset.try; heroUpdate(); startSim();} });
+    function fillAnswers() {
+      const cfg = Object.assign(readCfg(), DEFAULTS, {alpha: 0.3, decode: 'greedy', stop: true});
+      $$('#tryList [data-try]').forEach(b => b.querySelector('i').textContent = quickWrite(tokenize(b.dataset.try), cfg, 8).text);
+      $('#nSents').textContent = TRAIN.sentences.toLocaleString('en'); $('#nWords').textContent = (CORPUS_VOCAB.length - 1).toLocaleString('en');
+    }
+
+    /* settings live in a pop-up; changing them while stepping restarts the run with the new settings */
+    let setSnap = '';
+    const simKey = () => JSON.stringify(Object.assign({}, CFG, {speed: 0}));
+    function openSettings() {
+      hidePop(); if (playing) setPlay(false);
+      setSnap = simKey(); $('#setNote').textContent = $('#sim').classList.contains('on') ? 'Changes restart the current run.' : '';
+      previewUpdate(); $('#setBg').classList.add('on');
+    }
+    function closeSettings() {
+      if (!$('#setBg').classList.contains('on')) return;
+      $('#setBg').classList.remove('on'); hidePop();
+      SPEED = CFG.speed; document.body.style.setProperty('--spd', SPEED);
+      if ($('#sim').classList.contains('on') && simKey() !== setSnap) startSim();
+    }
+    document.addEventListener('click', e => {if (e.target.closest('[data-open="settings"]')) openSettings();});
+    $('#closeSet').onclick = $('#doneSet').onclick = closeSettings;
+    $('#setBg').addEventListener('click', e => {if (e.target.id === 'setBg') closeSettings();});
+    $('#setBg .modal').addEventListener('scroll', () => hidePop(), {passive: true});
 
     /* iOS-style settings */
     const SETS = [
       {
         title: 'Writing', rows: [
-          {k: 'depth', label: 'Words to predict', type: 'step', min: 1, max: 10, g: 'depth'},
+          {k: 'depth', label: 'Words to predict', type: 'step', min: 1, max: 200, g: 'depth'},
           {k: 'stop', label: 'Stop at end of sentence', type: 'switch', g: 'stop'},
           {k: 'decode', label: 'How to choose', type: 'seg', opts: [['sample', 'Random draw'], ['greedy', 'Most likely']], g: 'decode'},
           {k: 'temp', label: 'Temperature', type: 'slider', min: .1, max: 2, step: .1, g: 'temperature'},
@@ -1166,29 +1154,38 @@ il fait beau aujourd'hui`;
     ];
     function ctrlHTML(r) {
       const v = CFG[r.k];
-      if (r.type === 'step') return `<div class="stepper"><button data-k="${r.k}" data-d="-1" aria-label="Less">−</button><span id="v-${r.k}">${v}</span><button data-k="${r.k}" data-d="1" aria-label="More">+</button></div>`;
+      if (r.type === 'step') return `<div class="stepper"><button data-k="${r.k}" data-d="-1" aria-label="Less">−</button><input id="v-${r.k}" data-k="${r.k}" inputmode="numeric" value="${v}" aria-label="${r.label}"><button data-k="${r.k}" data-d="1" aria-label="More">+</button></div>`;
       if (r.type === 'switch') return `<button class="switch${v ? ' on' : ''}" data-k="${r.k}" role="switch" aria-checked="${v}" aria-label="${r.label}"></button>`;
       if (r.type === 'seg') return `<div class="seg">${r.opts.map(([val, t]) => `<button data-k="${r.k}" data-v="${val}" class="${v == val ? 'on' : ''}">${t}</button>`).join('')}</div>`;
       const p = (v - r.min) / (r.max - r.min) * 100;
       return `<div class="slider"><input type="range" data-k="${r.k}" min="${r.min}" max="${r.max}" step="${r.step}" value="${v}" style="--p:${p}%" aria-label="${r.label}"><span id="v-${r.k}">${(+v).toFixed(1)}</span></div>`;
     }
-    $('#groups').innerHTML = SETS.map(gp => `<div class="group"><h5>${gp.title}</h5><div class="glist">${gp.rows.map(r => `<div class="srow"><span class="lbl">${r.label}<button class="info" data-g="${r.g}" aria-label="About ${r.label}">i</button></span>${ctrlHTML(r)}</div>`).join('')}</div></div>`).join('');
+    const renderSettings = () => $('#groups').innerHTML = SETS.map(gp => `<div class="group"><h5>${gp.title}</h5><div class="glist">${gp.rows.map(r => `<div class="srow"><span class="lbl">${r.label}<button class="info" data-g="${r.g}" aria-label="About ${r.label}">i</button></span>${ctrlHTML(r)}</div>`).join('')}</div></div>`).join('');
+    renderSettings();
+    $('#resetSet').onclick = () => {Object.assign(CFG, DEFAULTS); renderSettings(); heroUpdate();};
     const ROW = Object.fromEntries(SETS.flatMap(g => g.rows).map(r => [r.k, r]));
     $('#groups').addEventListener('click', e => {
       const b = e.target.closest('button[data-k]'); if (!b) return;
       const r = ROW[b.dataset.k];
-      if (r.type === 'step') {CFG[r.k] = Math.max(r.min, Math.min(r.max, CFG[r.k] + +b.dataset.d)); $('#v-' + r.k).textContent = CFG[r.k];}
+      if (r.type === 'step') {CFG[r.k] = Math.max(r.min, Math.min(r.max, CFG[r.k] + +b.dataset.d)); $('#v-' + r.k).value = CFG[r.k];}
       else if (r.type === 'switch') {CFG[r.k] = !CFG[r.k]; b.classList.toggle('on', CFG[r.k]); b.setAttribute('aria-checked', CFG[r.k]);}
       else if (r.type === 'seg') {CFG[r.k] = typeof r.opts[0][0] === 'number' ? +b.dataset.v : b.dataset.v; b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));}
-      if (['d', 'seed', 'beta'].includes(r.k)) heroUpdate();
+      if (r.k !== 'speed') heroUpdate();
     });
     $('#groups').addEventListener('input', e => {
       const s = e.target.closest('input[type=range]'); if (!s) return;
       const r = ROW[s.dataset.k]; CFG[r.k] = +s.value; $('#v-' + r.k).textContent = (+s.value).toFixed(1);
       s.style.setProperty('--p', ((s.value - r.min) / (r.max - r.min) * 100) + '%');
-      if (r.k === 'beta') {clearTimeout(heroTimer); heroTimer = setTimeout(heroUpdate, 120);}
+      clearTimeout(heroTimer); heroTimer = setTimeout(heroUpdate, 60);
     });
+    /* the number in a stepper can also be typed */
+    $('#groups').addEventListener('change', e => {
+      const n = e.target.closest('.stepper input'); if (!n) return;
+      const r = ROW[n.dataset.k], v = Math.round(+n.value);
+      if (Number.isFinite(v)) CFG[r.k] = Math.max(r.min, Math.min(r.max, v));
+      n.value = CFG[r.k]; heroUpdate();
+    });
+    $('#groups').addEventListener('keydown', e => {if (e.key === 'Enter' && e.target.matches('.stepper input')) e.target.blur();});
 
-    const io = new IntersectionObserver(es => es.forEach(e => {if (e.isIntersecting) {e.target.classList.add('in'); io.unobserve(e.target);} }), {threshold: .15});
-    $$('.reveal').forEach(el => io.observe(el));
-    heroUpdate();
+    settingsLine();
+    setTimeout(() => {heroUpdate(); fillAnswers();}, 0);   // learn the word vectors after the page has had a chance to paint
