@@ -309,7 +309,7 @@
     function cellStyle(v, max, kind) {
       if (!isFinite(v)) return '';
       const a = kind === 'prob' ? Math.min(1, v) * .9 : Math.min(1, Math.abs(v) / max) * .9;
-      const rgb = kind === 'prob' ? '45,75,255' : v < 0 ? '0,122,255' : '255,149,0';
+      const rgb = kind === 'prob' ? '61,79,214' : v < 0 ? '61,79,214' : '240,150,40';
       return `background-color:rgba(${rgb},${(0.06 + a).toFixed(3)});${a > .5 ? 'color:#fff' : ''}`;
     }
     function matHTML(m) {
@@ -378,7 +378,8 @@
        ===================================================================== */
     const KEYS = ['tok', 'emb', 'pos', 'qkv', 'score', 'mask', 'soft', 'mix', 'norm', 'ffn', 'logits', 'pick'];
     const NAMES = ['Tokens', 'Embeddings', 'Positions', 'Query, key, value', 'Scores', 'Mask', 'Attention', 'Blend', 'Add & normalize', 'Feed-forward', 'Word scores', 'Choose'];
-    const COLORS = ['#ff9500', '#ff2d55', '#af52de', '#5856d6', '#007aff', '#8e8e93', '#30b0c7', '#34c759', '#00c7be', '#ff3b30', '#a2845e', 'ai'];
+    /* one colour family per phase: reading the words (amber), attention (blue), processing (teal), choosing (coral) */
+    const COLORS = ['#f2a53a', '#ec8b2f', '#e5722b', '#7d94f2', '#6680ec', '#5069e0', '#3d4fd6', '#3141b8', '#2bb39b', '#1c9884', '#f28a5c', 'ai'];
     const ABOUT = [
       'The sentence is cut into tokens, and each one gets its number.',
       'Every token becomes a list of numbers that stands for its meaning.',
@@ -408,7 +409,7 @@
       pick: '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><g fill="currentColor" stroke="none"><circle cx="8.5" cy="8.5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="15.5" cy="15.5" r="1.6"/></g>'
     };
     const svgI = k => `<svg class="icon" viewBox="0 0 24 24">${IC[k]}</svg>`;
-    const tile = k => {const i = KEYS.indexOf(k), c = COLORS[i]; return `<div class="tile${c === 'ai' ? ' ai' : ''}" style="--c:${c === 'ai' ? '#151515' : c}">${svgI(k)}</div>`;};
+    const tile = k => {const i = KEYS.indexOf(k), c = COLORS[i]; return `<div class="tile${c === 'ai' ? ' ai' : ''}" style="--c:${c === 'ai' ? '#ef5f3c' : c}">${svgI(k)}</div>`;};
 
     /* slide shell: centred head, one big card, "Learn more" underneath */
     function shell(st, {title, sub, vis, more, lesson, hint = true, glow = false}) {
@@ -589,7 +590,7 @@
         const w = A[q][j], p = pts[q], k = pts[j];
         const d = j === q ? `M${p.x - 12},${p.y} C${p.x - 36},${p.y - 66} ${p.x + 36},${p.y - 66} ${p.x + 12},${p.y}`
           : (() => {const hh = Math.min(150, 36 + Math.abs(p.x - k.x) * .5); return `M${p.x},${p.y} C${p.x},${p.y - hh} ${k.x},${p.y - hh} ${k.x},${k.y}`;})();
-        paths += `<path d="${d}" fill="none" stroke="#2d4bff" stroke-linecap="round" stroke-width="${(1.5 + 12 * w).toFixed(1)}" opacity="${(.25 + .75 * w).toFixed(2)}"/>`;
+        paths += `<path d="${d}" fill="none" stroke="#3d4fd6" stroke-linecap="round" stroke-width="${(1.5 + 12 * w).toFixed(1)}" opacity="${(.25 + .75 * w).toFixed(2)}"/>`;
       }
       svg.innerHTML = paths;
       if (animate) svg.querySelectorAll('path').forEach((p, i) => {
@@ -700,7 +701,7 @@
       };
     };
 
-    const PCOL = ['#ff5a3c', '#2d4bff', '#2fc8a0', '#af52de', '#e0457b', '#0f9bb5', '#8a6d3b', '#5856d6'];
+    const PCOL = ['#ef5f3c', '#3d4fd6', '#23a58b', '#8a63d2', '#d9508a', '#2b98a8', '#a2783c', '#5b6ee1'];
     R.pick = st => {
       const {cfg} = st.ctx, kept = st.kept, ch = st.chosen, sample = cfg.decode === 'sample';
       const bars = kept.map((s, i) => `<div class="prow"><span class="w">${esc(lab(s.w))}</span><span class="bar" style="--c:${PCOL[i % 8]}"><i data-w="${(s.q / kept[0].q * 100).toFixed(1)}"></i></span><span class="v">${pct(s.q)}</span></div>`).join('');
@@ -898,10 +899,11 @@
       $('#sentence').innerHTML = (it.from > 0 ? `<span class="older" title="Earlier words are outside the model’s ${CONTEXT}-word context window">…</span>` : '') + toks.map((t, i) => `<span class="${it.from + i >= SIM.nIn ? 'gen' : ''}${t === '.' ? ' punct' : ''}">${esc(t)}</span>`).join('') + (isDone ? '' : '<span class="slot" id="slot">?</span>');
       $('#counter').textContent = isDone ? 'Finished' : `Word ${g + 1} of ${SIM.iters.length}`;
       const k = isDone ? KEYS.length : KEYS.indexOf(st.key);
-      $('#prog').innerHTML = KEYS.map((key, i) => `<button class="pseg${i < k ? ' done' : ''}${i === k ? ' cur' : ''}" data-key="${key}" style="--c:${COLORS[i] === 'ai' ? '#151515' : COLORS[i]}" aria-label="Step ${i + 1}: ${NAMES[i]}" title="${NAMES[i]}"><i></i></button>`).join('');
+      $('#prog').innerHTML = KEYS.map((key, i) => `<button class="pseg${i < k ? ' done' : ''}${i === k ? ' cur' : ''}" data-key="${key}" style="--c:${COLORS[i] === 'ai' ? '#ef5f3c' : COLORS[i]}" aria-label="Step ${i + 1}: ${NAMES[i]}" title="${i + 1}. ${NAMES[i]}"><i>${svgI(key)}</i></button>`).join('');
       const li = st.layer != null && SIM.cfg.L > 1 ? ` · Layer ${st.layer + 1} of ${SIM.cfg.L}` : '';
       $('#plabel').textContent = isDone ? 'All twelve steps, done' : `${k + 1}. ${NAMES[k]}${li}`;
       $('#prev').disabled = pos === 0; $('#next').disabled = pos === SIM.steps.length - 1;
+      $('#dcount').textContent = isDone ? 'Done' : `${k + 1} / ${KEYS.length}`;
       $('#nextTok').disabled = false; $('#nextTok').textContent = isDone ? 'Keep writing' : 'Next word'; $('#skip').disabled = false;
     }
 
@@ -1103,10 +1105,10 @@
       ['About itself', ['the model predicts the', 'attention is', 'a token is']],
       ['Français', ['bonjour comment', 'je suis', 'le chat']]
     ];
-    const TRYCOL = ['#ff5a3c', '#2d4bff', '#2fc8a0', '#ffd23f', '#af52de', '#151515'];
+    const TRYCOL = ['#ef5f3c', '#3d4fd6', '#23a58b', '#f2a53a', '#8a63d2', '#1d1b19'];
     $('#examples').innerHTML = EXAMPLES.map(x => `<button class="tryword" data-try="${x}">${x}</button>`).join(', ');
     $('#tryList').innerHTML = TRY.map(([k, xs], i) => `<div class="trycard" style="--c:${TRYCOL[i % 6]}"><h3>${k}</h3>${xs.map(x => `<button class="trylink" data-try="${x}"><span>${x}</span> <i></i></button>`).join('')}</div>`).join('');
-    $('#steps12').innerHTML = KEYS.map((k, i) => `<li><span class="sq" style="--c:${COLORS[i] === 'ai' ? '#151515' : COLORS[i]}">${svgI(k)}</span><small>${String(i + 1).padStart(2, '0')}</small><span>${NAMES[i]}</span></li>`).join('');
+    $('#steps12').innerHTML = KEYS.map((k, i) => `<li><span class="sq" style="--c:${COLORS[i] === 'ai' ? '#ef5f3c' : COLORS[i]}">${svgI(k)}</span><small>${String(i + 1).padStart(2, '0')}</small><span>${NAMES[i]}</span></li>`).join('');
     document.addEventListener('click', e => {const t = e.target.closest('[data-try]'); if (t) {$('#inp').value = t.dataset.try; heroUpdate(); startSim();} });
     function fillAnswers() {
       const cfg = Object.assign(readCfg(), DEFAULTS, {alpha: 0.3, decode: 'greedy', stop: true});
